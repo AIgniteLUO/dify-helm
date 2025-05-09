@@ -27,7 +27,7 @@ image:
 
   sandbox:
     repository: langgenius/dify-sandbox
-    tag: "0.2.10"
+    tag: "0.2.11"
     pullPolicy: IfNotPresent
     ## Optionally specify an array of imagePullSecrets.
     ## Secrets must be manually created in the namespace.
@@ -437,6 +437,9 @@ web:
     ## @param web.serviceAccount.annotations Additional custom annotations for the ServiceAccount
     ##
     annotations: {}
+  ## @param web.enableServiceLinks Disable this feature if additional environment variables would lead to `E2BIG` errors in case frontend were managed by `pm2`
+  ##
+  enableServiceLinks: false
 
 sandbox:
   enabled: true
@@ -500,7 +503,6 @@ sandbox:
     clusterIP: ""
   auth:
     apiKey: "dify-sandbox"
-  privileged: false
   ## Sandbox ServiceAccount configuration
   ##
   serviceAccount:
@@ -624,6 +626,9 @@ pluginDaemon:
     serverKey: "lYkiYYT6owG+71oLerGzA7GXCgOT++6ovaezWAjpCjf+Sjc3ZtU+qUEi"
     # A separate key for interactions between `api`(`worker`) and `pluginDaemon`
     difyApiKey: "QaHbTe77CtuXmsfyhR7+vRjI/+XbV1AaFy691iy+kGDv2Jvy0/eAh8Y1"
+  ## Storage for `pluginDaemon`
+  ## Ignored if external object storage were configured via `.Values.externalS3` sections.
+  ##
   persistence:
     mountPath: "/app/storage"
     annotations:
@@ -2996,13 +3001,16 @@ externalPostgres:
 externalS3:
   enabled: false
   endpoint: "https://xxx.r2.cloudflarestorage.com"
+  path_style: "false"
   accessKey: "ak-difyai"
   secretKey: "sk-difyai"
   useSSL: false
-  bucketName: "difyai"
-  rootPath: ""
+  bucketName:
+    # Shared storage for `api` and `worker`
+    api: "difyai"
+    # If specifed, `pluginDaemon` will use this bucket instead of binding `PersistentVolume` for data persistence (only used when `externalS3.enabled` is set to `true`).
+    pluginDaemon:
   useIAM: false
-  iamEndpoint: ""
   region: "us-east-1"
 
 ###################################
@@ -3041,19 +3049,22 @@ externalGCS:
 
 ###################################
 # External TENCENT COS
-# - these configs are only used when `externalS3.enabled` and `externalAzureBlobStorage.enabled` and `externalOSS.enabled`  and `externalGCS.enabled` are false and `externalCOS.enabled` is true
+# - these configs are only used when `externalS3.enabled` and `externalAzureBlobStorage.enabled` and `externalOSS.enabled` and `externalGCS.enabled` are false and `externalCOS.enabled` is true
 ###################################
 externalCOS:
   enabled: false
   secretKey: "your-secret-key"
   secretId: "your-secret-id"
   region: "your-region"
-  bucketName: "your-bucket-name"
+  bucketName:
+    api: "your-bucket-name"
+    # If specifed, `pluginDaemon` will use this bucket instead of binding `PersistentVolume` for data persistence (only used when `externalCOS.enabled` is set to `true`).
+    pluginDaemon:
   scheme: "your-scheme"
 
 ###################################
 # External HUAWEI OBS
-# - these configs are only used when `externalS3.enabled` and `externalAzureBlobStorage.enabled` and `externalOSS.enabled`  and `externalGCS.enabled` and `externalCOS.enabled` are false and `externalOBS.enabled` is true
+# - these configs are only used when `externalS3.enabled` and `externalAzureBlobStorage.enabled` and `externalOSS.enabled` and `externalGCS.enabled` and `externalCOS.enabled` are false and `externalOBS.enabled` is true
 ###################################
 externalOBS:
   enabled: false
@@ -3102,12 +3113,11 @@ externalQdrant:
 ###################################
 externalMilvus:
   enabled: false
-  host: "your-milvus.domain"
-  port: 19530
-  database: "default"
-  user: "user"
-  password: "Milvus"
-  useTLS: false
+  uri: "http://your-milvus.domain:19530"
+  database: 'default'
+  token: ""
+  user: ""
+  password: ""
 
 ###################################
 # External Pgvector
@@ -3195,3 +3205,13 @@ customCACert: |-
   dboqLu6cbPYfAgb+LOv2Okx5wc4uMjDB0VI=
   -----END CERTIFICATE-----
 ## update-end-author: luo_jj date:2025-02-26 for: 添加自定义CA证书
+###################################
+# External TableStore Vector DB
+# - these configs take effect only if both `externalWeaviate.enabled`, `externalQdrant.enabled` and `externalMilvus.enabled` and `externalPgvector.enabled` and `externalTencentVectorDB.enabled` and `externalMyScaleDB.enabled` are set as `false` and `externalTableStore.enabled` is `true`
+###################################
+externalTableStore:
+  enabled: false
+  endpoint: "endpoint"
+  instanceName: "instance-name"
+  accessKeyId: "your-secret-id"
+  accessKeySecret: "your-secret-key"

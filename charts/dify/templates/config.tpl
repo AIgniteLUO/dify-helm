@@ -152,11 +152,11 @@ CONSOLE_API_URL: {{ .Values.api.url.consoleApi | quote }}
 # example: http://udify.app
 APP_API_URL: {{ .Values.api.url.appApi | quote }}
 # The DSN for Sentry
-{{- include "dify.marketplace.config" . }}
 {{- if and .Values.pluginDaemon.enabled .Values.pluginDaemon.marketplace.enabled .Values.pluginDaemon.marketplace.apiProxyEnabled }}
+MARKETPLACE_ENABLED: "true"
 MARKETPLACE_API_URL: "/marketplace"
 {{- else }}
-MARKETPLACE_API_URL: {{ .Values.api.url.marketplaceApi | quote }}
+{{- include "dify.marketplace.config" . }}
 {{- end }}
 MARKETPLACE_URL: {{ .Values.api.url.marketplace | quote }}
 ## update-begin-author: luo_jj date:2025-02-24 for: 添加知识库相关配置
@@ -197,7 +197,7 @@ DB_DATABASE: {{ .Values.postgresql.global.postgresql.auth.database }}
 STORAGE_TYPE: s3
 # The S3 storage configurations, only available when STORAGE_TYPE is `s3`.
 S3_ENDPOINT: {{ .Values.externalS3.endpoint }}
-S3_BUCKET_NAME: {{ .Values.externalS3.bucketName }}
+S3_BUCKET_NAME: {{ .Values.externalS3.bucketName.api }}
 # S3_ACCESS_KEY: {{ .Values.externalS3.accessKey }}
 # S3_SECRET_KEY: {{ .Values.externalS3.secretKey }}
 S3_REGION: {{ .Values.externalS3.region }}
@@ -231,7 +231,7 @@ STORAGE_TYPE: tencent-cos
 # The name of the Tencent COS bucket to use for storing files.
 TENCENT_COS_BUCKET_NAME: {{ .Values.externalCOS.bucketName }}
 # The secret key to use for authenticating with the Tencent COS service.
-TENCENT_COS_SECRET_KEY: {{ .Values.externalCOS.secretKey }}
+# TENCENT_COS_SECRET_KEY: {{ .Values.externalCOS.secretKey }}
 # The secret id to use for authenticating with the Tencent COS service.
 TENCENT_COS_SECRET_ID: {{ .Values.externalCOS.secretId }}
 # The region of the Tencent COS service.
@@ -276,7 +276,11 @@ REDIS_DB: "0"
 # Use redis as the broker, and redis db 1 for celery broker.
 {{- if .Values.externalRedis.enabled }}
   {{- with .Values.externalRedis }}
-# CELERY_BROKER_URL: {{ printf "redis://%s:%s@%s:%v/1" .username .password .host .port }}
+    {{- $scheme := "redis" }}
+    {{- if .useSSL }}
+      {{- $scheme = "rediss" }}
+    {{- end }}
+# CELERY_BROKER_URL: {{ printf "%s://%s:%s@%s:%v/1" $scheme .username .password .host .port }}
   {{- end }}
 {{- else if .Values.redis.enabled }}
 {{- $redisHost := printf "%s-redis-master" .Release.Name -}}
@@ -310,18 +314,10 @@ QDRANT_GRPC_PORT: {{ .Values.externalQdrant.grpc.port | quote }}
 {{- else if .Values.externalMilvus.enabled}}
 # Milvus configuration Only available when VECTOR_STORE is `milvus`.
 VECTOR_STORE: milvus
-# The milvus host.
-MILVUS_HOST: {{ .Values.externalMilvus.host | quote }}
-# The milvus host.
-MILVUS_PORT: {{ .Values.externalMilvus.port | toString | quote }}
+# Milvus endpoint
+MILVUS_URI: {{ .Values.externalMilvus.uri | quote }}
 # The milvus database
 MILVUS_DATABASE: {{ .Values.externalMilvus.database | quote }}
-# The milvus username.
-# MILVUS_USER: {{ .Values.externalMilvus.user | quote }}
-# The milvus password.
-# MILVUS_PASSWORD: {{ .Values.externalMilvus.password | quote }}
-# The milvus tls switch.
-MILVUS_SECURE: {{ .Values.externalMilvus.useTLS | toString | quote }}
 {{- else if .Values.externalPgvector.enabled}}
 # pgvector configurations, only available when VECTOR_STORE is `pgvecto-rs or pgvector`
 VECTOR_STORE: pgvector
@@ -349,6 +345,13 @@ MYSCALE_PORT: {{ .Values.externalMyScaleDB.port | toString | quote }}
 # MYSCALE_PASSWORD: {{ .Values.externalMyScaleDB.password | quote }}
 MYSCALE_DATABASE: {{ .Values.externalMyScaleDB.database | quote }}
 MYSCALE_FTS_PARAMS: {{ .Values.externalMyScaleDB.ftsParams | quote }}
+{{- else if .Values.externalTableStore.enabled }}
+# TableStore configurations, only available when VECTOR_STORE is `tablestore`
+VECTOR_STORE: tablestore
+TABLESTORE_ENDPOINT: {{ .Values.externalTableStore.endpoint | quote }}
+TABLESTORE_INSTANCE_NAME: {{ .Values.externalTableStore.instanceName | quote }}
+# TABLESTORE_ACCESS_KEY_ID: {{ .Values.externalTableStore.accessKeyId | quote }}
+# TABLESTORE_ACCESS_KEY_SECRET: {{ .Values.externalTableStore.accessKeySecret | quote }}
 {{- else if .Values.weaviate.enabled }}
 # The type of vector store to use. Supported values are `weaviate`, `qdrant`, `milvus`.
 VECTOR_STORE: weaviate
@@ -497,7 +500,7 @@ server {
       include proxy.conf;
     }
 
-    location /e {
+    location /e/ {
       proxy_pass http://{{ template "dify.pluginDaemon.fullname" .}}:{{ .Values.pluginDaemon.service.ports.daemon }};
       include proxy.conf;
     }
@@ -594,10 +597,12 @@ DB_DATABASE: {{ .Values.externalPostgres.database.pluginDaemon | quote }}
 {{- define "dify.pluginDaemon.config" }}
 {{- include "dify.redis.config" . }}
 {{- include "dify.pluginDaemon.db.config" .}}
+{{- include "dify.pluginDaemon.storage.config" .}}
 SERVER_PORT: "5002"
 PLUGIN_REMOTE_INSTALLING_HOST: "0.0.0.0"
 PLUGIN_REMOTE_INSTALLING_PORT: "5003"
 MAX_PLUGIN_PACKAGE_SIZE: "52428800"
+PLUGIN_STORAGE_LOCAL_ROOT: {{ .Values.pluginDaemon.persistence.mountPath | quote }}
 PLUGIN_WORKING_PATH: {{ printf "%s/cwd" .Values.pluginDaemon.persistence.mountPath | clean | quote }}
 DIFY_INNER_API_URL: "http://{{ template "dify.api.fullname" . }}:{{ .Values.api.service.port }}"
 ## update-begin-author: luo_jj date:2025-02-26 for: 添加 dify-plugin-daemon 配置
@@ -612,6 +617,24 @@ MARKETPLACE_ENABLED: "true"
 MARKETPLACE_API_URL: {{ .Values.api.url.marketplaceApi | quote }}
 {{- else }}
 MARKETPLACE_ENABLED: "false"
+{{- end }}
+{{- end }}
+
+{{- define "dify.pluginDaemon.storage.config" -}}
+{{- if and .Values.externalS3.enabled .Values.externalS3.bucketName.pluginDaemon }}
+PLUGIN_STORAGE_TYPE: aws_s3
+S3_USE_PATH_STYLE: {{ .Values.externalS3.path_style | toString | quote }}
+S3_ENDPOINT: {{ .Values.externalS3.endpoint }}
+PLUGIN_STORAGE_OSS_BUCKET: {{ .Values.externalS3.bucketName.pluginDaemon | quote }}
+AWS_REGION: {{ .Values.externalS3.region }}
+{{- else if and .Values.externalCOS.enabled .Values.externalCOS.bucketName.pluginDaemon }}
+PLUGIN_STORAGE_TYPE: "tencent_cos"
+TENCENT_COS_SECRET_ID: {{ .Values.externalCOS.secretId | quote }}
+TENCENT_COS_REGION: {{ .Values.externalCOS.region | quote }}
+PLUGIN_STORAGE_OSS_BUCKET: {{ .Values.externalCOS.bucketName.pluginDaemon | quote }}
+{{- else }}
+PLUGIN_STORAGE_TYPE: local
+STORAGE_LOCAL_PATH: {{ .Values.pluginDaemon.persistence.mountPath | quote }}
 {{- end }}
 {{- end }}
 

@@ -21,8 +21,11 @@ spec:
       {{/*
       # Required labels for istio
       # app: {{ template "dify.sandbox.fullname" . }}
-      # version: {{ (print "v" .Values.serviceMesh.version) | quote }}
+      # version: {{ .Values.istioServiceMesh.version | quote }}
       */}}
+  {{- if .Values.sandbox.updateStrategy }}
+  strategy: {{- toYaml .Values.sandbox.updateStrategy | nindent 4 }}
+  {{- end }}
   template:
     metadata:
       annotations:
@@ -35,11 +38,14 @@ spec:
         {{/*
         # Required labels for istio
         # app: {{ template "dify.sandbox.fullname" . }}
-        # version: {{ (print "v" .Values.serviceMesh.version) | quote }}
+        # version: {{ .Values.istioServiceMesh.version | quote }}
         */}}
 {{ include "dify.ud.labels" . | indent 8 }}
     spec:
       serviceAccountName: {{ include "dify.sandbox.serviceAccountName" . }}
+      {{- if .Values.sandbox.priorityClassName }}
+      priorityClassName: {{ .Values.sandbox.priorityClassName | quote }}
+      {{- end }}
       {{- if .Values.image.sandbox.pullSecrets }}
       imagePullSecrets:
       {{- range .Values.image.sandbox.pullSecrets }}

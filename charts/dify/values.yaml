@@ -27,7 +27,7 @@ image:
 
   sandbox:
     repository: langgenius/dify-sandbox
-    tag: "0.2.11"
+    tag: "0.2.12"
     pullPolicy: IfNotPresent
     ## Optionally specify an array of imagePullSecrets.
     ## Secrets must be manually created in the namespace.
@@ -59,8 +59,8 @@ image:
     #   - myRegistryKeySecretName
 
   pluginDaemon:
-    repository: registry.vxk8s.com/langgenius/dify-plugin-daemon
-    tag: 0.0.9-local
+    repository: langgenius/dify-plugin-daemon
+    tag: 0.1.3-local
     pullPolicy: IfNotPresent
     ## Optionally specify an array of imagePullSecrets.
     ## Secrets must be manually created in the namespace.
@@ -76,6 +76,7 @@ api:
   nodeSelector: {}
   affinity: {}
   tolerations: []
+  priorityClassName: ""
   autoscaling:
     enabled: false
     minReplicas: 1
@@ -108,6 +109,9 @@ api:
     timeoutSeconds: 5
     failureThreshold: 5
     successThreshold: 1
+  ## @param api.updateStrategy Update strategy type and configuration parameters
+  ## ref: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy
+  updateStrategy: {}
   ## @param api.customLivenessProbe Custom livenessProbe that overrides the default one
   customLivenessProbe: {}
   ## @param api.customReadinessProbe Custom readinessProbe that overrides the default one
@@ -245,6 +249,7 @@ worker:
   nodeSelector: {}
   affinity: {}
   tolerations: []
+  priorityClassName: ""
   autoscaling:
     enabled: false
     minReplicas: 1
@@ -259,6 +264,9 @@ worker:
   customReadinessProbe: {}
   ## @param worker.customStartupProbe Custom startupProbe that overrides the default one
   customStartupProbe: {}
+  ## @param worker.updateStrategy Update strategy type and configuration parameters
+  ## ref: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy
+  updateStrategy: {}
   # Configure Pods Security Context
   podSecurityContext: {}
   # Configure Container Security Context
@@ -301,6 +309,7 @@ proxy:
   nodeSelector: {}
   affinity: {}
   tolerations: []
+  priorityClassName: ""
   ## Configure extra options for proxy containers' liveness, readiness, and startup probes
   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
   ## @param proxy.customLivenessProbe Custom livenessProbe that overrides the default one
@@ -311,6 +320,9 @@ proxy:
   customStartupProbe: {}
   ## @param proxy.clientMaxBodySize Custom client_max_body_size param nginx default: 15m
   clientMaxBodySize: "100m"
+  ## @param proxy.updateStrategy Update strategy type and configuration parameters
+  ## ref: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy
+  updateStrategy: {}
   # Configure Pods Security Context
   podSecurityContext: {}
   # Configure Container Security Context
@@ -370,6 +382,7 @@ web:
   nodeSelector: {}
   affinity: {}
   tolerations: []
+  priorityClassName: ""
   autoscaling:
     enabled: false
     minReplicas: 1
@@ -402,6 +415,9 @@ web:
     timeoutSeconds: 5
     failureThreshold: 5
     successThreshold: 1
+  ## @param web.updateStrategy Update strategy type and configuration parameters
+  ## ref: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy
+  updateStrategy: {}
   ## @param web.customLivenessProbe Custom livenessProbe that overrides the default one
   customLivenessProbe: {}
   ## @param web.customReadinessProbe Custom readinessProbe that overrides the default one
@@ -448,6 +464,7 @@ sandbox:
   nodeSelector: {}
   affinity: {}
   tolerations: []
+  priorityClassName: ""
   autoscaling:
     enabled: false
     minReplicas: 1
@@ -480,6 +497,9 @@ sandbox:
     timeoutSeconds: 5
     failureThreshold: 2
     successThreshold: 1
+  ## @param sandbox.updateStrategy Update strategy type and configuration parameters
+  ## ref: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy
+  updateStrategy: {}
   ## @param sandbox.customLivenessProbe Custom livenessProbe that overrides the default one
   customLivenessProbe: {}
   ## @param sandbox.customReadinessProbe Custom readinessProbe that overrides the default one
@@ -527,6 +547,7 @@ ssrfProxy:
   nodeSelector: {}
   affinity: {}
   tolerations: []
+  priorityClassName: ""
   ## Configure extra options for ssrf proxy containers' liveness, readiness, and startup probes
   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
   ## @param ssrfProxy.customLivenessProbe Custom livenessProbe that overrides the default one
@@ -535,6 +556,9 @@ ssrfProxy:
   customReadinessProbe: {}
   ## @param ssrfProxy.customStartupProbe Custom startupProbe that overrides the default one
   customStartupProbe: {}
+  ## @param ssrfProxy.updateStrategy Update strategy type and configuration parameters
+  ## ref: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy
+  updateStrategy: {}
   # Configure Pods Security Context
   podSecurityContext: {}
   # Configure Container Security Context
@@ -594,6 +618,7 @@ pluginDaemon:
   nodeSelector: {}
   affinity: {}
   tolerations: []
+  priorityClassName: ""
   ## Configure extra options for plugin daemon containers' liveness, readiness, and startup probes
   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
   ## @param pluginDaemon.customLivenessProbe Custom livenessProbe that overrides the default one
@@ -602,6 +627,9 @@ pluginDaemon:
   customReadinessProbe: {}
   ## @param pluginDaemon.customStartupProbe Custom startupProbe that overrides the default one
   customStartupProbe: {}
+  ## @param pluginDaemon.updateStrategy Update strategy type and configuration parameters
+  ## ref: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy
+  updateStrategy: {}
   # Configure Pods Security Context
   podSecurityContext: {}
   # Configure Container Security Context
@@ -3001,7 +3029,7 @@ externalPostgres:
 externalS3:
   enabled: false
   endpoint: "https://xxx.r2.cloudflarestorage.com"
-  path_style: "false"
+  pathStyle: false
   accessKey: "ak-difyai"
   secretKey: "sk-difyai"
   useSSL: false
@@ -3034,7 +3062,10 @@ externalOSS:
   accessKey: "ak-difyai"
   secretKey: "sk-difyai"
   region: "ap-southeast-1"
-  bucketName: "difyai"
+  bucketName:
+    api: "difyai"
+    # If specifed, `pluginDaemon` will use this bucket instead of binding `PersistentVolume` for data persistence (only used when `externalOSS.enabled` is set to `true`).
+    pluginDaemon:
   authVersion: v4
   path: "your-path"
 
@@ -3044,7 +3075,10 @@ externalOSS:
 ###################################
 externalGCS:
   enabled: false
-  bucketName: "difyai"
+  bucketName:
+    api: "difyai"
+    # If specifed, `pluginDaemon` will use this bucket instead of binding `PersistentVolume` for data persistence (only used when `externalGCS.enabled` is set to `true`).
+    pluginDaemon:
   serviceAccountJsonBase64: ""
 
 ###################################
@@ -3068,10 +3102,29 @@ externalCOS:
 ###################################
 externalOBS:
   enabled: false
+  endpoint: "https://your-endpoint"
+  accessKey: "your-secret-id"
   secretKey: "your-secret-key"
-  secretId: "your-secret-id"
-  bucketName: "your-bucket-name"
-  server: "your-server"
+  bucketName:
+    api: "your-bucket-name"
+    # If specifed, `pluginDaemon` will use this bucket instead of binding `PersistentVolume` for data persistence (only used when `externalOBS.enabled` is set to `true`).
+    pluginDaemon:
+
+###################################
+# External Tinder Object Storage (TOS) from volcengine
+# - these configs are only used when `externalS3.enabled` and `externalAzureBlobStorage.enabled` and `externalOSS.enabled` and `externalGCS.enabled` and `externalCOS.enabled` and `externalOBS.enabled` are false and `externalTOS.enabled` is true
+###################################
+externalTOS:
+  enabled: false
+  endpoint: "https://tos-cn-beijing.volces.com"
+  accessKey: "your-access-key"
+  secretKey: "your-secret-key"
+  bucketName:
+    # Shared storage for `api` and `worker`
+    api: "your-bucket-name"
+    # If specifed, `pluginDaemon` will use this bucket instead of binding `PersistentVolume` for data persistence (only used when `externalTOS.enabled` is set to `true`).
+    pluginDaemon:
+  region: "cn-beijing"
 
 ###################################
 # External Redis

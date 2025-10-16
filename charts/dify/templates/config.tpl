@@ -86,6 +86,29 @@ SSRF_PROXY_HTTPS_URL: http://{{ template "dify.ssrfProxy.fullname" .}}:{{ .Value
 {{- if .Values.pluginDaemon.enabled }}
 PLUGIN_DAEMON_URL: http://{{ template "dify.pluginDaemon.fullname" .}}:{{ .Values.pluginDaemon.service.ports.daemon }}
 {{- end }}
+
+{{- if .Values.api.otel.enabled }}
+# OpenTelemetry configuration
+ENABLE_OTEL: {{ .Values.api.otel.enabled | toString | quote }}
+{{- if .Values.api.otel.traceEndpoint }}
+OTLP_TRACE_ENDPOINT: {{ .Values.api.otel.traceEndpoint | quote }}
+{{- end }}
+{{- if .Values.api.otel.metricEndpoint }}
+OTLP_METRIC_ENDPOINT: {{ .Values.api.otel.metricEndpoint | quote }}
+{{- end }}
+OTLP_BASE_ENDPOINT: {{ .Values.api.otel.baseEndpoint | quote }}
+{{- if .Values.api.otel.exporterProtocol }}
+OTEL_EXPORTER_OTLP_PROTOCOL: {{ .Values.api.otel.exporterProtocol | quote }}
+{{- end }}
+OTEL_EXPORTER_TYPE: {{ .Values.api.otel.exporterType | quote }}
+OTEL_SAMPLING_RATE: {{ .Values.api.otel.samplingRate | toString | quote }}
+OTEL_BATCH_EXPORT_SCHEDULE_DELAY: {{ .Values.api.otel.batchExportScheduleDelay | toString | quote }}
+OTEL_MAX_QUEUE_SIZE: {{ .Values.api.otel.maxQueueSize | toString | quote }}
+OTEL_MAX_EXPORT_BATCH_SIZE: {{ .Values.api.otel.maxExportBatchSize | toString | quote }}
+OTEL_METRIC_EXPORT_INTERVAL: {{ .Values.api.otel.metricExportInterval | toString | quote }}
+OTEL_BATCH_EXPORT_TIMEOUT: {{ .Values.api.otel.batchExportTimeout | toString | quote }}
+OTEL_METRIC_EXPORT_TIMEOUT: {{ .Values.api.otel.metricExportTimeout | toString | quote }}
+{{- end }}
 {{- end }}
 
 {{- define "dify.worker.config" -}}
@@ -141,6 +164,29 @@ CELERY_BACKEND: redis
 PLUGIN_DAEMON_URL: http://{{ template "dify.pluginDaemon.fullname" .}}:{{ .Values.pluginDaemon.service.ports.daemon }}
 {{- end }}
 {{- include "dify.marketplace.config" . }}
+
+{{- if .Values.api.otel.enabled }}
+# OpenTelemetry configuration
+ENABLE_OTEL: {{ .Values.api.otel.enabled | toString | quote }}
+{{- if .Values.api.otel.traceEndpoint }}
+OTLP_TRACE_ENDPOINT: {{ .Values.api.otel.traceEndpoint | quote }}
+{{- end }}
+{{- if .Values.api.otel.metricEndpoint }}
+OTLP_METRIC_ENDPOINT: {{ .Values.api.otel.metricEndpoint | quote }}
+{{- end }}
+OTLP_BASE_ENDPOINT: {{ .Values.api.otel.baseEndpoint | quote }}
+{{- if .Values.api.otel.exporterProtocol }}
+OTEL_EXPORTER_OTLP_PROTOCOL: {{ .Values.api.otel.exporterProtocol | quote }}
+{{- end }}
+OTEL_EXPORTER_TYPE: {{ .Values.api.otel.exporterType | quote }}
+OTEL_SAMPLING_RATE: {{ .Values.api.otel.samplingRate | toString | quote }}
+OTEL_BATCH_EXPORT_SCHEDULE_DELAY: {{ .Values.api.otel.batchExportScheduleDelay | toString | quote }}
+OTEL_MAX_QUEUE_SIZE: {{ .Values.api.otel.maxQueueSize | toString | quote }}
+OTEL_MAX_EXPORT_BATCH_SIZE: {{ .Values.api.otel.maxExportBatchSize | toString | quote }}
+OTEL_METRIC_EXPORT_INTERVAL: {{ .Values.api.otel.metricExportInterval | toString | quote }}
+OTEL_BATCH_EXPORT_TIMEOUT: {{ .Values.api.otel.batchExportTimeout | toString | quote }}
+OTEL_METRIC_EXPORT_TIMEOUT: {{ .Values.api.otel.metricExportTimeout | toString | quote }}
+{{- end }}
 {{- end }}
 
 {{- define "dify.web.config" -}}
@@ -202,6 +248,7 @@ S3_BUCKET_NAME: {{ .Values.externalS3.bucketName.api | quote }}
 # S3_ACCESS_KEY: {{ .Values.externalS3.accessKey | quote }}
 # S3_SECRET_KEY: {{ .Values.externalS3.secretKey | quote }}
 S3_REGION: {{ .Values.externalS3.region | quote }}
+S3_USE_AWS_MANAGED_IAM: {{ .Values.externalS3.useIAM | toString | quote }}
 {{- else if .Values.externalAzureBlobStorage.enabled }}
 # The type of storage to use for storing user files. Supported values are `local`, `s3`, `azure-blob`, `aliyun-oss` and `google-storage`, Default: `local`
 STORAGE_TYPE: azure-blob
@@ -264,19 +311,49 @@ STORAGE_LOCAL_PATH: {{ .Values.api.persistence.mountPath | quote }}
 {{- define "dify.redis.config" -}}
 {{- if .Values.externalRedis.enabled }}
   {{- with .Values.externalRedis }}
+    {{- if .sentinel.enabled }}
+REDIS_USE_SENTINEL: "true"
+REDIS_SENTINELS: {{ join "," .sentinel.sentinels | quote }}
+REDIS_SENTINEL_SERVICE_NAME: {{ .sentinel.masterSet | quote }}
+REDIS_SENTINEL_USERNAME: ""
+REDIS_SENTINEL_SOCKET_TIMEOUT: "0.1"
+    {{- else }}
 REDIS_HOST: {{ .host | quote }}
 REDIS_PORT: {{ .port | toString | quote }}
 # REDIS_USERNAME: {{ .username | quote }}
 # REDIS_PASSWORD: {{ .password | quote }}
 REDIS_USE_SSL: {{ .useSSL | toString | quote }}
+    {{- end }}
 # use redis db 0 for redis cache
 REDIS_DB: "0"
   {{- end }}
 {{- else if .Values.redis.enabled }}
-{{- $redisHost := printf "%s-redis-master" .Release.Name -}}
-  {{- with .Values.redis }}
-REDIS_HOST: {{ $redisHost }}
-REDIS_PORT: {{ .master.service.ports.redis | toString | quote }}
+{{- $releaseName := printf "%s" .Release.Name -}}
+{{- $namespace := .Release.Namespace -}}
+{{- with .Values.redis }}
+  {{- if .sentinel.enabled }}
+    {{- $sentinelPort := .sentinel.service.ports.sentinel | int -}}
+    {{- $masterSet := .sentinel.masterSet -}}
+    {{- $password := .auth.password -}}
+# Redis Sentinel configuration
+{{- $sentinelHosts := list }}
+{{- range $i, $e := until (.replica.replicaCount | int) }}
+{{- $sentinelHosts = append $sentinelHosts (printf "%s-redis-node-%d.%s-redis-headless.%s.svc.cluster.local:%d" $releaseName $i $releaseName $namespace $sentinelPort) }}
+{{- end }}
+# use redis db 0 for redis cache
+REDIS_DB: "0"
+REDIS_USE_SENTINEL: "true"
+REDIS_SENTINELS: {{ join "," $sentinelHosts | quote }}
+REDIS_SENTINEL_SERVICE_NAME: {{ $masterSet | quote }}
+REDIS_SENTINEL_USERNAME: ""
+# REDIS_SENTINEL_PASSWORD: {{ .auth.password | quote }}
+REDIS_SENTINEL_SOCKET_TIMEOUT: "0.1"
+  {{- else }}
+# Standalone Redis configuration
+    {{- $redisHost := printf "%s-redis-master" $releaseName -}}
+    {{- $redisPort := .master.service.ports.redis }}
+REDIS_HOST: {{ $redisHost | quote }}
+REDIS_PORT: {{ $redisPort | toString | quote }}
 # REDIS_USERNAME: ""
 # REDIS_PASSWORD: {{ .auth.password | quote }}
 REDIS_USE_SSL: {{ .tls.enabled | toString | quote }}
@@ -285,22 +362,60 @@ REDIS_DB: "0"
   {{- end }}
 {{- end }}
 {{- end }}
+{{- end }}
 
 {{- define "dify.celery.config" -}}
 # Use redis as the broker, and redis db 1 for celery broker.
 {{- if .Values.externalRedis.enabled }}
   {{- with .Values.externalRedis }}
-    {{- $scheme := "redis" }}
-    {{- if .useSSL }}
-      {{- $scheme = "rediss" }}
-    {{- end }}
+    {{- if .sentinel.enabled }}
+# If use Redis Sentinel, format as follows: `sentinel://<redis_username>:<redis_password>@<sentinel_host1>:<sentinel_port>/<redis_database>`
+# For high availability, you can configure multiple Sentinel nodes (if provided) separated by semicolons like below example:
+# Example: sentinel://:difyai123456@localhost:26379/1;sentinel://:difyai12345@localhost:26379/1;sentinel://:difyai12345@localhost:26379/1
+CELERY_SENTINEL_MASTER_NAME: {{ .sentinel.masterSet | quote }}
+# Note: In sentinel mode, the password is already included in the broker URL
+# CELERY_SENTINEL_PASSWORD: {{ .sentinel.password | quote }}
+CELERY_SENTINEL_SOCKET_TIMEOUT: "0.1"
+CELERY_USE_SENTINEL: "true"
+    {{- else }}
+      {{- $scheme := "redis" }}
+      {{- if .useSSL }}
+        {{- $scheme = "rediss" }}
+      {{- end }}
 # CELERY_BROKER_URL: {{ printf "%s://%s:%s@%s:%v/1" $scheme .username .password .host .port }}
+    {{- end }}
   {{- end }}
 {{- else if .Values.redis.enabled }}
-{{- $redisHost := printf "%s-redis-master" .Release.Name -}}
-  {{- with .Values.redis }}
-# CELERY_BROKER_URL: {{ printf "redis://:%s@%s:%v/1" .auth.password $redisHost .master.service.ports.redis }}
+{{- $releaseName := printf "%s" .Release.Name -}}
+{{- $namespace := .Release.Namespace -}}
+{{- with .Values.redis }}
+  {{- if .sentinel.enabled }}
+    {{- $sentinelPort := .sentinel.service.ports.sentinel | int -}}
+    {{- $masterSet := .sentinel.masterSet -}}
+    {{- $password := .auth.password -}}
+# If use Redis Sentinel, format as follows: `sentinel://<redis_username>:<redis_password>@<sentinel_host1>:<sentinel_port>/<redis_database>`
+# For high availability, you can configure multiple Sentinel nodes (if provided) separated by semicolons like below example:
+# Example: sentinel://:difyai123456@localhost:26379/1;sentinel://:difyai12345@localhost:26379/1;sentinel://:difyai12345@localhost:26379/1
+
+{{- $sentinelUrls := list }}
+{{- range $i, $e := until (.replica.replicaCount | int) }}
+{{- $sentinelUrls = append $sentinelUrls (printf "sentinel://:%s@%s-redis-node-%d.%s-redis-headless.%s.svc.cluster.local:%d/1" $password $releaseName $i $releaseName $namespace $sentinelPort) }}
+{{- end }}
+# CELERY_BROKER_URL: {{ join ";" $sentinelUrls | quote }}
+CELERY_SENTINEL_MASTER_NAME: {{ $masterSet | quote }}
+# Note: In sentinel mode, the password is already included in the broker URL
+# CELERY_SENTINEL_PASSWORD: {{ .auth.password | quote }}
+CELERY_SENTINEL_SOCKET_TIMEOUT: "0.1"
+CELERY_USE_SENTINEL: "true"
+  {{- else }}
+# Use standalone redis as the broker, and redis db 1 for celery broker. (redis_username is usually set by defualt as empty)
+# Format as follows: `redis://<redis_username>:<redis_password>@<redis_host>:<redis_port>/<redis_database>`.
+# Example: redis://:difyai123456@redis:6379/1
+    {{- $redisHost := printf "%s-redis-master" $releaseName -}}
+    {{- $redisPort := .master.service.ports.redis }}
+# CELERY_BROKER_URL: {{ printf "redis://:%s@%s:%v/1" .auth.password $redisHost $redisPort | quote }}
   {{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
 
@@ -366,6 +481,11 @@ TABLESTORE_ENDPOINT: {{ .Values.externalTableStore.endpoint | quote }}
 TABLESTORE_INSTANCE_NAME: {{ .Values.externalTableStore.instanceName | quote }}
 # TABLESTORE_ACCESS_KEY_ID: {{ .Values.externalTableStore.accessKeyId | quote }}
 # TABLESTORE_ACCESS_KEY_SECRET: {{ .Values.externalTableStore.accessKeySecret | quote }}
+{{- else if .Values.externalElasticsearch.enabled }}
+# Elasticsearch configurations, only available when VECTOR_STORE is `elasticsearch`
+VECTOR_STORE: elasticsearch
+ELASTICSEARCH_HOST: {{ .Values.externalElasticsearch.host | quote }}
+ELASTICSEARCH_PORT: {{ .Values.externalElasticsearch.port | toString | quote }}
 {{- else if .Values.weaviate.enabled }}
 # The type of vector store to use. Supported values are `weaviate`, `qdrant`, `milvus`.
 VECTOR_STORE: weaviate
@@ -646,6 +766,10 @@ S3_USE_PATH_STYLE: {{ .Values.externalS3.pathStyle | toString | quote }}
 S3_ENDPOINT: {{ .Values.externalS3.endpoint | quote }}
 PLUGIN_STORAGE_OSS_BUCKET: {{ .Values.externalS3.bucketName.pluginDaemon | quote }}
 AWS_REGION: {{ .Values.externalS3.region | quote }}
+S3_USE_AWS_MANAGED_IAM: {{ .Values.externalS3.useIAM | toString | quote }}
+{{- else if .Values.externalAzureBlobStorage.enabled }}
+PLUGIN_STORAGE_TYPE: "azure_blob"
+AZURE_BLOB_STORAGE_CONTAINER_NAME: {{ .Values.externalAzureBlobStorage.container | quote }}
 {{- else if and .Values.externalOSS.enabled .Values.externalOSS.bucketName.pluginDaemon }}
 PLUGIN_STORAGE_TYPE: "aliyun_oss"
 ALIYUN_OSS_REGION: {{ .Values.externalOSS.region | quote }}
@@ -672,11 +796,11 @@ HUAWEI_OBS_ACCESS_KEY: {{ .Values.externalOBS.accessKey | quote }}
 # HUAWEI_OBS_SECRET_KEY: {{ .Values.externalOBS.secretKey | quote }}
 {{- else if and .Values.externalTOS.enabled .Values.externalTOS.bucketName.pluginDaemon }}
 PLUGIN_STORAGE_TYPE: "volcengine-tos"
-PLUGIN_VOLCENGINE_TOS_ENDPOINT: {{ .Values.externalTOS.endpoint | quote }}
-PLUGIN_VOLCENGINE_TOS_REGION: {{ .Values.externalTOS.region | quote }}
+VOLCENGINE_TOS_ENDPOINT: {{ .Values.externalTOS.endpoint | quote }}
+VOLCENGINE_TOS_REGION: {{ .Values.externalTOS.region | quote }}
 PLUGIN_STORAGE_OSS_BUCKET: {{ .Values.externalTOS.bucketName.pluginDaemon | quote }}
-PLUGIN_VOLCENGINE_TOS_ACCESS_KEY: {{ .Values.externalTOS.accessKey | quote }}
-# PLUGIN_VOLCENGINE_TOS_SECRET_KEY: {{ .Values.externalTOS.secretKey | quote }}
+VOLCENGINE_TOS_ACCESS_KEY: {{ .Values.externalTOS.accessKey | quote }}
+# VOLCENGINE_TOS_SECRET_KEY: {{ .Values.externalTOS.secretKey | quote }}
 {{- else }}
 PLUGIN_STORAGE_TYPE: local
 STORAGE_LOCAL_PATH: {{ .Values.pluginDaemon.persistence.mountPath | quote }}

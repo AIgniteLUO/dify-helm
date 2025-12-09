@@ -114,8 +114,7 @@ OTEL_METRIC_EXPORT_TIMEOUT: {{ .Values.api.otel.metricExportTimeout | toString |
 {{- define "dify.worker.config" -}}
 # worker service
 # The Celery worker for processing the queue.
-# Startup mode, 'worker' starts the Celery worker for processing the queue.
-MODE: worker
+
 
 # The base URL of console application web frontend, refers to the Console base URL of WEB service if console domain is
 # different from api or web app domain.
@@ -213,12 +212,21 @@ MARKETPLACE_URL: {{ .Values.api.url.marketplace | quote }}
 
 {{- define "dify.db.config" -}}
 {{- if .Values.externalPostgres.enabled }}
+DB_TYPE: postgresql
 # DB_USERNAME: {{ .Values.externalPostgres.username | quote }}
 # DB_PASSWORD: {{ .Values.externalPostgres.password | quote }}
 DB_HOST: {{ .Values.externalPostgres.address }}
 DB_PORT: {{ .Values.externalPostgres.port | toString | quote }}
 DB_DATABASE: {{ .Values.externalPostgres.database.api | quote }}
+{{- else if .Values.externalMysql.enabled }}
+DB_TYPE: mysql
+# DB_USERNAME: {{ .Values.externalMysql.username | quote }}
+# DB_PASSWORD: {{ .Values.externalMysql.password | quote }}
+DB_HOST: {{ .Values.externalMysql.address | quote }}
+DB_PORT: {{ .Values.externalMysql.port | toString | quote }}
+DB_DATABASE: {{ .Values.externalMysql.database.api | quote }}
 {{- else if .Values.postgresql.enabled }}
+DB_TYPE: postgresql
   {{ with .Values.postgresql.global.postgresql.auth }}
   {{- if empty .username }}
 # DB_USERNAME: postgres
@@ -324,8 +332,8 @@ REDIS_PORT: {{ .port | toString | quote }}
 # REDIS_PASSWORD: {{ .password | quote }}
 REDIS_USE_SSL: {{ .useSSL | toString | quote }}
     {{- end }}
-# use redis db 0 for redis cache
-REDIS_DB: "0"
+# use redis db for redis cache, configurable via .Values.externalRedis.db
+REDIS_DB: {{ .db.app | default 0 | toString | quote }}
   {{- end }}
 {{- else if .Values.redis.enabled }}
 {{- $releaseName := printf "%s" .Release.Name -}}
@@ -424,7 +432,10 @@ CELERY_USE_SENTINEL: "true"
 # The type of vector store to use. Supported values are `weaviate`, `qdrant`, `milvus`, `pgvector`, `tencent`, `myscale`.
 VECTOR_STORE: weaviate
 # The Weaviate endpoint URL. Only available when VECTOR_STORE is `weaviate`.
-WEAVIATE_ENDPOINT: {{ .Values.externalWeaviate.endpoint | quote }}
+WEAVIATE_ENDPOINT: {{ .Values.externalWeaviate.endpoint.http | quote }}
+{{- if .Values.externalWeaviate.endpoint.grpc }}
+WEAVIATE_GRPC_ENDPOINT: {{ .Values.externalWeaviate.endpoint.grpc | quote }}
+{{- end }}
 # The Weaviate API key.
 # WEAVIATE_API_KEY: {{ .Values.externalWeaviate.apiKey }}
 {{- else if .Values.externalQdrant.enabled }}
@@ -465,7 +476,7 @@ TENCENT_VECTOR_DB_TIMEOUT: {{ .Values.externalTencentVectorDB.timeout | quote }}
 TENCENT_VECTOR_DB_DATABASE: {{ .Values.externalTencentVectorDB.database | quote }}
 TENCENT_VECTOR_DB_SHARD: {{ .Values.externalTencentVectorDB.shard | quote }}
 TENCENT_VECTOR_DB_REPLICAS: {{ .Values.externalTencentVectorDB.replicas | quote }}
-{{- else if .Values.externalMyScaleDB.enabled}}
+{{- else if .Values.externalMyScaleDB.enabled }}
 # MyScaleDB vector db configurations, only available when VECTOR_STORE is `myscale`
 VECTOR_STORE: myscale
 MYSCALE_HOST: {{ .Values.externalMyScaleDB.host | quote }}
@@ -493,7 +504,7 @@ VECTOR_STORE: weaviate
     {{- if and (eq .type "ClusterIP") (not (eq .clusterIP "None"))}}
 # The Weaviate endpoint URL. Only available when VECTOR_STORE is `weaviate`.
 {{/*
-Pitfall: scheme (i.e.) must be supecified, or weviate client won't function as
+Pitfall: schema (i.e. http) must be supecified, or weviate client won't function as
 it depends on `hostname` from urllib.parse.urlparse will be empty if schema is not specified.
 */}}
 WEAVIATE_ENDPOINT: {{ printf "http://%s" .name | quote }}
@@ -502,6 +513,11 @@ WEAVIATE_ENDPOINT: {{ printf "http://%s" .name | quote }}
 # The Weaviate API key.
   {{- if .Values.weaviate.authentication.apikey }}
 # WEAVIATE_API_KEY: {{ first .Values.weaviate.authentication.apikey.allowed_keys }}
+  {{- end }}
+  {{- if .Values.weaviate.grpcService.enabled }}
+WEAVIATE_GRPC_ENDPOINT: "{{ .Values.weaviate.grpcService.name }}:{{ index .Values.weaviate.grpcService.ports 0 "port" }}"
+  {{- else }}
+WEAVIATE_GRPC_ENDPOINT: "{{ .Values.weaviate.service.name }}:50051"
   {{- end }}
 {{- end }}
 {{- end }}
@@ -655,6 +671,11 @@ server {
       include proxy.conf;
     }
 
+    location /triggers {
+      proxy_pass http://{{ template "dify.api.fullname" .}}:{{ .Values.api.service.port }};
+      include proxy.conf;
+    }
+
     location / {
       proxy_pass http://{{ template "dify.web.fullname" .}}:{{ .Values.web.service.port }};
       include proxy.conf;
@@ -723,9 +744,15 @@ cache_store_log none
 
 {{- define "dify.pluginDaemon.db.config" -}}
 {{- if .Values.externalPostgres.enabled }}
+DB_TYPE: postgresql
 DB_HOST: {{ .Values.externalPostgres.address | quote }}
 DB_PORT: {{ .Values.externalPostgres.port | toString | quote }}
 DB_DATABASE: {{ .Values.externalPostgres.database.pluginDaemon | quote }}
+{{- else if .Values.externalMysql.enabled }}
+DB_TYPE: mysql
+DB_HOST: {{ .Values.externalMysql.address | quote }}
+DB_PORT: {{ .Values.externalMysql.port | toString | quote }}
+DB_DATABASE: {{ .Values.externalMysql.database.pluginDaemon | quote }}
 {{- else if .Values.postgresql.enabled }}
 # N.B.: `pluginDaemon` will the very same `PostgresSQL` database as `api`, `worker`,
 # which is NOT recommended for production and subject to possible confliction in the future releases of `dify`
@@ -741,8 +768,7 @@ SERVER_PORT: "5002"
 PLUGIN_REMOTE_INSTALLING_HOST: "0.0.0.0"
 PLUGIN_REMOTE_INSTALLING_PORT: "5003"
 MAX_PLUGIN_PACKAGE_SIZE: "52428800"
-PLUGIN_STORAGE_LOCAL_ROOT: {{ .Values.pluginDaemon.persistence.mountPath | quote }}
-PLUGIN_WORKING_PATH: {{ printf "%s/cwd" .Values.pluginDaemon.persistence.mountPath | clean | quote }}
+PLUGIN_WORKING_PATH: "/app/cwd"
 DIFY_INNER_API_URL: "http://{{ template "dify.api.fullname" . }}:{{ .Values.api.service.port }}"
 ## update-begin-author: luo_jj date:2025-02-26 for: 添加 dify-plugin-daemon 配置
 FORCE_VERIFYING_SIGNATURE: {{ .Values.pluginDaemon.forceVerifyingSignature | quote }}
@@ -803,7 +829,7 @@ VOLCENGINE_TOS_ACCESS_KEY: {{ .Values.externalTOS.accessKey | quote }}
 # VOLCENGINE_TOS_SECRET_KEY: {{ .Values.externalTOS.secretKey | quote }}
 {{- else }}
 PLUGIN_STORAGE_TYPE: local
-STORAGE_LOCAL_PATH: {{ .Values.pluginDaemon.persistence.mountPath | quote }}
+PLUGIN_STORAGE_LOCAL_ROOT: {{ .Values.pluginDaemon.persistence.mountPath | quote }}
 {{- end }}
 {{- end }}
 

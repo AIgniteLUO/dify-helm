@@ -244,6 +244,15 @@ DB_HOST: {{ .Release.Name }}-postgresql
 DB_PORT: "5432"
 DB_DATABASE: {{ .Values.postgresql.global.postgresql.auth.database }}
 {{- end }}
+## update-begin-author: luo_jj date:2025-12-10 for: 添加数据库连接池配置
+# SQLAlchemy connection pool configuration
+SQLALCHEMY_POOL_SIZE: {{ .Values.database.pool.size | toString | quote }}
+SQLALCHEMY_MAX_OVERFLOW: {{ .Values.database.pool.maxOverflow | toString | quote }}
+SQLALCHEMY_POOL_RECYCLE: {{ .Values.database.pool.recycle | toString | quote }}
+SQLALCHEMY_POOL_PRE_PING: {{ .Values.database.pool.prePing | toString | quote }}
+SQLALCHEMY_POOL_TIMEOUT: {{ .Values.database.pool.timeout | toString | quote }}
+SQLALCHEMY_ECHO: {{ .Values.database.pool.echo | toString | quote }}
+## update-end-author: luo_jj date:2025-12-10 for: 添加数据库连接池配置
 {{- end }}
 
 {{- define "dify.storage.config" -}}

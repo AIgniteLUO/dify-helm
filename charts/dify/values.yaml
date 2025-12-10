@@ -825,6 +825,29 @@ pluginDaemon:
   forceVerifyingSignature: false
   ## update-end-author: luo_jj date:2025-02-26 for: 添加 dify-plugin-daemon 配置
 
+## @section Database Connection Pool configuration
+##
+## update-begin-author: luo_jj date:2025-12-10 for: 添加数据库连接池配置
+database:
+  # SQLAlchemy connection pool settings
+  # Reference: https://docs.sqlalchemy.org/en/20/core/pooling.html
+  pool:
+    # Connection pool size (number of connections to keep open)
+    # Recommended: (number of api replicas * 10) to (number of api replicas * 20)
+    size: 30
+    # Maximum overflow connections (additional connections beyond pool_size)
+    maxOverflow: 10
+    # Connection recycle time in seconds (prevent stale connections)
+    # Should be less than PostgreSQL's idle_in_transaction_session_timeout
+    recycle: 3600
+    # Enable connection health check before using (recommended: true)
+    prePing: true
+    # Connection timeout in seconds
+    timeout: 30
+    # Echo SQL statements (for debugging, set to false in production)
+    echo: false
+## update-end-author: luo_jj date:2025-12-10 for: 添加数据库连接池配置
+
 postgresql:
   enabled: true
   name: postgres
